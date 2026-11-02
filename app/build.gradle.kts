@@ -11,8 +11,8 @@ android {
         applicationId = "com.chessmaster.app"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "3.0"
     }
 
     compileOptions {
@@ -23,4 +23,8 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+dependencies {
+    implementation("com.github.bhlangonijr:chesslib:1.3.7")
 }
