@@ -7,12 +7,15 @@ import android.view.Gravity
 import android.widget.*
 import com.github.bhlangonijr.chesslib.Board
 import com.github.bhlangonijr.chesslib.Square
+import com.github.bhlangonijr.chesslib.move.Move
 
 class MainActivity : Activity() {
 
     private var chess = Board()
     private var selected = ""
-    private lateinit var boardView: GridLayout
+    private var difficulty = 2
+    private var thinking = false
+
     private lateinit var info: TextView
     private lateinit var cells: Array<TextView>
 
@@ -21,18 +24,12 @@ class MainActivity : Activity() {
     private val green = Color.rgb(120, 180, 90)
 
     private val symbols = mapOf(
-        "WHITE_KING" to "♔",
-        "WHITE_QUEEN" to "♕",
-        "WHITE_ROOK" to "♖",
-        "WHITE_BISHOP" to "♗",
-        "WHITE_KNIGHT" to "♘",
-        "WHITE_PAWN" to "♙",
-        "BLACK_KING" to "♚",
-        "BLACK_QUEEN" to "♛",
-        "BLACK_ROOK" to "♜",
-        "BLACK_BISHOP" to "♝",
-        "BLACK_KNIGHT" to "♞",
-        "BLACK_PAWN" to "♟",
+        "WHITE_KING" to "♔", "WHITE_QUEEN" to "♕",
+        "WHITE_ROOK" to "♖", "WHITE_BISHOP" to "♗",
+        "WHITE_KNIGHT" to "♘", "WHITE_PAWN" to "♙",
+        "BLACK_KING" to "♚", "BLACK_QUEEN" to "♛",
+        "BLACK_ROOK" to "♜", "BLACK_BISHOP" to "♝",
+        "BLACK_KNIGHT" to "♞", "BLACK_PAWN" to "♟",
         "NONE" to ""
     )
 
@@ -47,23 +44,45 @@ class MainActivity : Activity() {
         }
 
         val title = TextView(this).apply {
-            text = "♟ CHESSMASTER"
-            textSize = 29f
+            text = "♟ CHESSMASTER V4"
+            textSize = 27f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
         }
         root.addView(title)
 
+        val level = Spinner(this)
+        val options = listOf("Débutant", "Intermédiaire", "Difficile")
+        level.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            options
+        )
+        level.setSelection(1)
+        level.onItemSelectedListener =
+            object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                override fun onItemSelected(
+                    parent: android.widget.AdapterView<*>?,
+                    view: android.view.View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    difficulty = position + 1
+                }
+            }
+        root.addView(level)
+
         info = TextView(this).apply {
-            text = "Au tour des blancs"
-            textSize = 17f
+            text = "Tu joues les Blancs. À toi !"
+            textSize = 16f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            setPadding(0, 16, 0, 16)
+            setPadding(0, 15, 0, 15)
         }
         root.addView(info)
 
-        boardView = GridLayout(this).apply {
+        val grid = GridLayout(this).apply {
             columnCount = 8
             rowCount = 8
         }
@@ -81,7 +100,7 @@ class MainActivity : Activity() {
         }
 
         for (i in 0 until 64) {
-            boardView.addView(
+            grid.addView(
                 cells[i],
                 GridLayout.LayoutParams().apply {
                     width = size
@@ -90,72 +109,163 @@ class MainActivity : Activity() {
             )
         }
 
-        root.addView(boardView)
+        root.addView(grid)
 
         val reset = Button(this).apply {
             text = "Nouvelle partie"
             setOnClickListener {
                 chess = Board()
                 selected = ""
+                thinking = false
+                info.text = "Nouvelle partie ! Tu joues les Blancs."
                 updateBoard()
-                info.text = "Nouvelle partie ! Aux blancs."
             }
         }
-
         root.addView(reset)
+
         setContentView(root)
         updateBoard()
     }
 
     private fun tap(index: Int) {
-        val file = 'a' + (index % 8)
-        val rank = 8 - (index / 8)
+        if (thinking || chess.sideToMove.toString() != "WHITE") return
+
+        val file = 'a' + index % 8
+        val rank = 8 - index / 8
         val destination = "$file$rank"
 
         if (selected.isEmpty()) {
             val square = Square.valueOf(destination.uppercase())
-            if (chess.getPiece(square).toString() == "NONE") {
-                info.text = "Sélectionne une pièce."
-                return
-            }
+            val piece = chess.getPiece(square).toString()
 
-            selected = destination
-            info.text = "Pièce sélectionnée : $destination"
+            if (piece.startsWith("WHITE_")) {
+                selected = destination
+                info.text = "Pièce sélectionnée : $destination"
+                updateBoard()
+            } else {
+                info.text = "Sélectionne une pièce blanche."
+            }
+            return
+        }
+
+        val move = chess.legalMoves().firstOrNull {
+            it.toString().take(4) == selected + destination
+        }
+
+        if (move == null) {
+            selected = ""
+            info.text = "Coup interdit. Réessaie."
             updateBoard()
             return
         }
 
-        val legalMove = chess.legalMoves().firstOrNull {
-            it.toString().take(4) == selected + destination
-        }
-
-        if (legalMove != null) {
-            chess.doMove(legalMove)
-            selected = ""
-
-            info.text = when {
-                chess.isMated() -> "ÉCHEC ET MAT ! Partie terminée."
-                chess.isDraw() -> "Match nul !"
-                else -> "Coup accepté ! À l'adversaire."
-            }
-        } else {
-            val square = Square.valueOf(destination.uppercase())
-            if (chess.getPiece(square).toString() != "NONE") {
-                selected = destination
-                info.text = "Nouvelle pièce sélectionnée."
-            } else {
-                selected = ""
-                info.text = "Coup interdit ! Réessaie."
-            }
-        }
-
+        chess.doMove(move)
+        selected = ""
         updateBoard()
+
+        if (finishIfNeeded()) return
+
+        thinking = true
+        info.text = "L'ordinateur réfléchit..."
+        updateBoard()
+
+        Thread {
+            val reply = chooseMove(chess, difficulty)
+
+            runOnUiThread {
+                if (reply != null && chess.sideToMove.toString() == "BLACK") {
+                    chess.doMove(reply)
+                }
+                thinking = false
+                updateBoard()
+                finishIfNeeded()
+            }
+        }.start()
+    }
+
+    private fun chooseMove(position: Board, depth: Int): Move? {
+        val moves = position.legalMoves().shuffled()
+        var bestMove: Move? = null
+        var bestScore = Int.MIN_VALUE
+
+        for (move in moves) {
+            val next = position.clone()
+            next.doMove(move)
+            val score = -search(next, depth - 1)
+            if (score > bestScore) {
+                bestScore = score
+                bestMove = move
+            }
+        }
+        return bestMove
+    }
+
+    private fun search(board: Board, depth: Int): Int {
+        if (board.isMated()) return -100000
+        if (board.isDraw() || board.isStaleMate()) return 0
+        if (depth <= 0) return evaluate(board)
+
+        var best = Int.MIN_VALUE
+        for (move in board.legalMoves()) {
+            val next = board.clone()
+            next.doMove(move)
+            val score = -search(next, depth - 1)
+            if (score > best) best = score
+        }
+        return best
+    }
+
+    private fun evaluate(board: Board): Int {
+        var whiteScore = 0
+
+        val values = mapOf(
+            "PAWN" to 100,
+            "KNIGHT" to 320,
+            "BISHOP" to 330,
+            "ROOK" to 500,
+            "QUEEN" to 900,
+            "KING" to 20000
+        )
+
+        for (square in Square.values()) {
+            if (square == Square.NONE) continue
+            val piece = board.getPiece(square).toString()
+            val value = values.entries.firstOrNull {
+                piece.endsWith(it.key)
+            }?.value ?: 0
+
+            if (piece.startsWith("WHITE_")) whiteScore += value
+            if (piece.startsWith("BLACK_")) whiteScore -= value
+        }
+
+        return if (board.sideToMove.toString() == "WHITE")
+            whiteScore else -whiteScore
+    }
+
+    private fun finishIfNeeded(): Boolean {
+        if (chess.isMated()) {
+            info.text = if (chess.sideToMove.toString() == "WHITE")
+                "Échec et mat ! L'ordinateur gagne."
+            else "Échec et mat ! Tu as gagné !"
+            return true
+        }
+
+        if (chess.isDraw() || chess.isStaleMate()) {
+            info.text = "Match nul !"
+            return true
+        }
+
+        info.text = if (chess.sideToMove.toString() == "WHITE")
+            "À toi de jouer !"
+        else "Au tour de l'ordinateur."
+
+        return false
     }
 
     private fun updateBoard() {
         for (i in 0 until 64) {
-            val file = 'a' + (i % 8)
-            val rank = 8 - (i / 8)
+            val file = 'a' + i % 8
+            val rank = 8 - i / 8
             val name = "$file$rank"
             val square = Square.valueOf(name.uppercase())
             val piece = chess.getPiece(square).toString()
