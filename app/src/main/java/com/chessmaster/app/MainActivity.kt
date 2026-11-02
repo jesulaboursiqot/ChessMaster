@@ -10,7 +10,7 @@ import com.github.bhlangonijr.chesslib.Square
 
 class MainActivity : Activity() {
 
-    private val chess = Board()
+    private var chess = Board()
     private var selected = ""
     private lateinit var boardView: GridLayout
     private lateinit var info: TextView
@@ -95,7 +95,7 @@ class MainActivity : Activity() {
         val reset = Button(this).apply {
             text = "Nouvelle partie"
             setOnClickListener {
-                chess.reset()
+                chess = Board()
                 selected = ""
                 updateBoard()
                 info.text = "Nouvelle partie ! Aux blancs."
