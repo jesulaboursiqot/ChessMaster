@@ -45,7 +45,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(12, 20, 12, 20)
-            setBackgroundColor(background)
+            setBackgroundColor(Color.rgb(25, 32, 45))
         }
 
         val title = TextView(this).apply {
